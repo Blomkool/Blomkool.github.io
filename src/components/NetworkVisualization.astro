@@ -1,0 +1,330 @@
+---
+---
+
+<div id="network-container" class="network-container">
+  <div class="network-overlay">
+    <h2>Connecting Talent with Opportunity</h2>
+    <p>Our extensive network links skilled professionals with leading employers across South Africa</p>
+  </div>
+</div>
+
+<script>
+  import * as THREE from 'three';
+
+  // Network visualization class
+  class NetworkVisualization {
+    constructor(containerId) {
+      this.container = document.getElementById(containerId);
+      this.width = this.container.clientWidth;
+      this.height = this.container.clientHeight;
+      this.mouseX = 0;
+      this.mouseY = 0;
+      
+      this.init();
+      this.createNetwork();
+      this.addEventListeners();
+      this.animate();
+    }
+
+    init() {
+      // Scene setup
+      this.scene = new THREE.Scene();
+      
+      // Camera setup
+      this.camera = new THREE.PerspectiveCamera(60, this.width / this.height, 0.1, 1000);
+      this.camera.position.z = 150;
+      
+      // Renderer setup
+      this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      this.renderer.setSize(this.width, this.height);
+      this.renderer.setPixelRatio(window.devicePixelRatio);
+      this.container.appendChild(this.renderer.domElement);
+      
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+      this.scene.add(ambientLight);
+      
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(0, 10, 10);
+      this.scene.add(directionalLight);
+      
+      // Groups to hold our objects
+      this.nodesGroup = new THREE.Group();
+      this.linksGroup = new THREE.Group();
+      this.scene.add(this.nodesGroup);
+      this.scene.add(this.linksGroup);
+    }
+
+    createNetwork() {
+      // Define node types
+      const nodeTypes = {
+        employer: {
+          color: 0x9C27B0, // Primary purple
+          size: 5,
+          count: 5
+        },
+        employee: {
+          color: 0xFF9800, // Accent orange
+          size: 2.5,
+          count: 40
+        }
+      };
+      
+      // Create nodes
+      this.nodes = [];
+      
+      // Create employer nodes
+      for (let i = 0; i < nodeTypes.employer.count; i++) {
+        const node = this.createNode(
+          nodeTypes.employer.size,
+          nodeTypes.employer.color,
+          100, // Spread
+          true // Is employer
+        );
+        this.nodes.push(node);
+      }
+      
+      // Create employee nodes
+      for (let i = 0; i < nodeTypes.employee.count; i++) {
+        const node = this.createNode(
+          nodeTypes.employee.size,
+          nodeTypes.employee.color,
+          150 // Spread
+        );
+        this.nodes.push(node);
+      }
+      
+      // Create links between employers and employees
+      this.createLinks();
+    }
+
+    createNode(size, color, spread, isEmployer = false) {
+      // Create geometry and material
+      const geometry = new THREE.SphereGeometry(size, 16, 16);
+      const material = new THREE.MeshPhongMaterial({
+        color: color,
+        shininess: 90,
+        transparent: true,
+        opacity: 0.9
+      });
+      
+      // Create mesh
+      const mesh = new THREE.Mesh(geometry, material);
+      
+      // Position randomly, but employers more centered
+      if (isEmployer) {
+        mesh.position.x = (Math.random() - 0.5) * spread * 0.5;
+        mesh.position.y = (Math.random() - 0.5) * spread * 0.5;
+        mesh.position.z = (Math.random() - 0.5) * spread * 0.5;
+      } else {
+        mesh.position.x = (Math.random() - 0.5) * spread;
+        mesh.position.y = (Math.random() - 0.5) * spread;
+        mesh.position.z = (Math.random() - 0.5) * spread;
+      }
+      
+      // Add to scene
+      this.nodesGroup.add(mesh);
+      
+      // Add velocity for animation
+      mesh.userData = {
+        velocity: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.2,
+          (Math.random() - 0.5) * 0.2,
+          (Math.random() - 0.5) * 0.2
+        ),
+        isEmployer: isEmployer,
+        links: []
+      };
+      
+      return mesh;
+    }
+
+    createLinks() {
+      // Get employer and employee nodes
+      const employers = this.nodes.filter(node => node.userData.isEmployer);
+      const employees = this.nodes.filter(node => !node.userData.isEmployer);
+      
+      // Connect each employee to 1-2 random employers
+      employees.forEach(employee => {
+        // Determine how many employers to connect to (1 or 2)
+        const connectionsCount = Math.random() > 0.7 ? 2 : 1;
+        
+        // Create connections
+        for (let i = 0; i < connectionsCount; i++) {
+          const randomEmployerIndex = Math.floor(Math.random() * employers.length);
+          const employer = employers[randomEmployerIndex];
+          
+          // Create link
+          this.createLink(employee, employer);
+        }
+      });
+    }
+
+    createLink(nodeA, nodeB) {
+      // Create line geometry
+      const points = [nodeA.position, nodeB.position];
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      
+      // Create line material
+      const material = new THREE.LineBasicMaterial({
+        color: 0xCE93D8, // Light purple
+        transparent: true,
+        opacity: 0.4,
+        linewidth: 1
+      });
+      
+      // Create line
+      const line = new THREE.Line(geometry, material);
+      this.linksGroup.add(line);
+      
+      // Store reference to connected nodes
+      line.userData = {
+        nodeA: nodeA,
+        nodeB: nodeB
+      };
+      
+      // Store reference to line in nodes
+      nodeA.userData.links.push(line);
+      nodeB.userData.links.push(line);
+    }
+
+    updateLinks() {
+      // Update all link positions based on connected nodes
+      this.linksGroup.children.forEach(line => {
+        const { nodeA, nodeB } = line.userData;
+        
+        // Update line geometry to match node positions
+        const points = [nodeA.position, nodeB.position];
+        line.geometry.setFromPoints(points);
+        line.geometry.attributes.position.needsUpdate = true;
+      });
+    }
+
+    addEventListeners() {
+      // Mouse move event for interactive rotation
+      window.addEventListener('mousemove', (event) => {
+        this.mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        this.mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+      });
+      
+      // Resize event
+      window.addEventListener('resize', () => {
+        this.width = this.container.clientWidth;
+        this.height = this.container.clientHeight;
+        
+        this.camera.aspect = this.width / this.height;
+        this.camera.updateProjectionMatrix();
+        
+        this.renderer.setSize(this.width, this.height);
+      });
+    }
+
+    updateNodes() {
+      // Update node positions based on velocity
+      this.nodes.forEach(node => {
+        // Move node
+        node.position.x += node.userData.velocity.x;
+        node.position.y += node.userData.velocity.y;
+        node.position.z += node.userData.velocity.z;
+        
+        // Boundary check - reverse direction if hitting boundaries
+        const bounds = node.userData.isEmployer ? 50 : 100;
+        
+        ['x', 'y', 'z'].forEach(axis => {
+          if (Math.abs(node.position[axis]) > bounds) {
+            node.userData.velocity[axis] *= -1;
+          }
+        });
+        
+        // Slow rotation for visual interest
+        node.rotation.x += 0.01;
+        node.rotation.y += 0.01;
+      });
+    }
+
+    animate() {
+      requestAnimationFrame(this.animate.bind(this));
+      
+      // Update nodes
+      this.updateNodes();
+      
+      // Update links
+      this.updateLinks();
+      
+      // Rotate entire network based on mouse position
+      this.nodesGroup.rotation.y += (this.mouseX * 0.05 - this.nodesGroup.rotation.y) * 0.01;
+      this.nodesGroup.rotation.x += (this.mouseY * 0.05 - this.nodesGroup.rotation.x) * 0.01;
+      
+      this.linksGroup.rotation.y = this.nodesGroup.rotation.y;
+      this.linksGroup.rotation.x = this.nodesGroup.rotation.x;
+      
+      // Render
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  // Initialize when DOM is loaded
+  document.addEventListener('DOMContentLoaded', () => {
+    // Wait a bit to ensure container is fully rendered
+    setTimeout(() => {
+      new NetworkVisualization('network-container');
+    }, 100);
+  });
+</script>
+
+<style>
+  .network-container {
+    width: 100%;
+    height: 500px;
+    position: relative;
+    background: linear-gradient(135deg, #1a0033 0%, #3a015c 100%);
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    margin: 3rem 0;
+  }
+
+  .network-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .network-overlay h2 {
+    color: var(--text-light);
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .network-overlay p {
+    color: var(--primary-light);
+    font-size: 1.2rem;
+    max-width: 600px;
+    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  }
+
+  @media (max-width: 768px) {
+    .network-container {
+      height: 400px;
+    }
+
+    .network-overlay h2 {
+      font-size: 1.8rem;
+    }
+
+    .network-overlay p {
+      font-size: 1rem;
+    }
+  }
+</style>
